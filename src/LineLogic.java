@@ -107,14 +107,15 @@ public class LineLogic {
     private static long modInverse(long a, long m) {
         long m0 = m;
         long y = 0, x = 1;
+        long q, t;
 
         if (m == 1) return 0;
 
         while (a > 1) {
             // q est le quotient
-            long q = a / m;
+            q = a / m;
             // t sert de tampon
-            long t = m;
+            t = m;
 
             // m est le reste maintenant, on échange comme dans l'algorithme d'Euclide
             m = a % m;
