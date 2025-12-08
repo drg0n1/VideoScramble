@@ -39,7 +39,7 @@ public class LineLogic {
 
             if (isEncrypt) {
                 // Appel de la logique d'encryption
-                // Source et destination, largeur, canaux, position Y de départ, taille du bloc, r et s
+                // Source et destination, largeur, position Y de départ, taille du bloc, r et s
                 processBlockEncrypt(sourceData, resultData, rowWidth, currentY, blockSize, r, s);
             } else {
                 processBlockDecrypt(sourceData, resultData, rowWidth, currentY, blockSize, r, s);

@@ -141,7 +141,7 @@ public class VideoCracker {
 
                 int diff = val1 - val2;
                 totalDiffSq += (diff * diff);
-                count++;
+                count++;    
             }
         }
 

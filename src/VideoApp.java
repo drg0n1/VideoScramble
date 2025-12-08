@@ -383,7 +383,6 @@ public class VideoApp extends Application {
                 videoSelector.getItems().add("videos/output_encrypted.avi");
             }
             // Sélectionner le fichier généré pour pouvoir le tester immédiatement
-            // videoSelector.setValue("output_encrypted.avi");
         });
 
         task.setOnFailed(e -> {
