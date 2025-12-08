@@ -7,7 +7,7 @@ import org.opencv.videoio.Videoio;
 public class VideoCracker {
 
     // On augmente un peu la plage de recherche pour être sûr
-    private static final int MAX_SEARCH_S = 255;
+    private static final int MAX_SEARCH_S = 127;
     private static final int MAX_SEARCH_R = 255;
 
     public static class CrackingResult {

@@ -200,7 +200,8 @@ public class VideoApp extends Application {
         videoSelector.getItems().addAll(
                 "videos/cat.avi",
                 "videos/video.mp4",
-                "output_encrypted.avi"
+                "videos/output_encrypted.avi",
+                "videos/videoTest.m4v"
         );
         videoSelector.setEditable(true);
         videoSelector.setValue("videos/cat.avi");
@@ -299,7 +300,7 @@ public class VideoApp extends Application {
         generateButton.setDisable(true);
         progressBar.setVisible(true);
         progressBar.setProgress(0);
-        statusLabel.setText("⏳ Génération du fichier crypté en cours...");
+        statusLabel.setText("Génération du fichier crypté en cours...");
 
         // Clés
         final int rKey = parseSafe(rEncField.getText());
@@ -328,7 +329,7 @@ public class VideoApp extends Application {
                 Size size = new Size(width, height);
 
                 // Initialisation writer
-                String outputPath = "output_encrypted.avi";
+                String outputPath = "videos/output_encrypted.avi";
                 int fourcc = VideoWriter.fourcc('M', 'J', 'P', 'G');
                 VideoWriter writerGen = new VideoWriter(outputPath, fourcc, fps, size, true);
 
@@ -366,7 +367,7 @@ public class VideoApp extends Application {
                 resized.release();
                 capGen.release();
                 writerGen.release();
-                updateMessage("✅ Génération terminée : " + outputPath);
+                updateMessage("Génération terminée : " + outputPath);
                 return null;
             }
         };
@@ -378,8 +379,8 @@ public class VideoApp extends Application {
             generateButton.setDisable(false);
 
             // Ajouter le nouveau fichier à la liste si nécessaire
-            if (!videoSelector.getItems().contains("output_encrypted.avi")) {
-                videoSelector.getItems().add("output_encrypted.avi");
+            if (!videoSelector.getItems().contains("videos/output_encrypted.avi")) {
+                videoSelector.getItems().add("videos/output_encrypted.avi");
             }
             // Sélectionner le fichier généré pour pouvoir le tester immédiatement
             // videoSelector.setValue("output_encrypted.avi");
@@ -403,7 +404,7 @@ public class VideoApp extends Application {
             return;
         }
 
-        statusLabel.setText("⏳ Analyse en cours... (Cela peut prendre quelques secondes)");
+        statusLabel.setText("Analyse en cours... (Cela peut prendre quelques secondes)");
         crackButton.setDisable(true);
 
         new Thread(() -> {
@@ -416,7 +417,7 @@ public class VideoApp extends Application {
                     rDecField.setText(String.valueOf(result.bestR));
                     sDecField.setText(String.valueOf(result.bestS));
                 } else {
-                    statusLabel.setText("❌ Échec : Vidéo trop sombre ou algorithme inefficace.");
+                    statusLabel.setText("Échec : Vidéo trop sombre ou algorithme inefficace.");
                 }
             });
         }).start();
