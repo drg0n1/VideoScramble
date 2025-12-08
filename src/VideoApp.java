@@ -212,7 +212,6 @@ public class VideoApp extends Application {
                 int rEnc = parseSafe(rEncField.getText());
                 int sEnc = parseSafe(sEncField.getText());
 
-                // --- CHANGEMENT ICI : Appel explicite à encrypt ---
                 LineLogic.encrypt(encryptedFrame, rEnc, sEnc);
 
                 Mat decryptedFrame = encryptedFrame.clone();
@@ -220,7 +219,6 @@ public class VideoApp extends Application {
                 int rDec = parseSafe(rDecField.getText());
                 int sDec = parseSafe(sDecField.getText());
 
-                // --- CHANGEMENT ICI : Appel explicite à decrypt ---
                 LineLogic.decrypt(decryptedFrame, rDec, sDec);
 
                 Image imageEnc = mat2Image(encryptedFrame);
