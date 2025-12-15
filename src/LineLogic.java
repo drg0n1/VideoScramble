@@ -104,7 +104,7 @@ public class LineLogic {
      * Calcule l'inverse modulaire de a modulo m en utilisant l'algorithme d'Euclide étendu
      * Complexité : O(log m)
      */
-    private static long modInverse(long a, long m) {
+    public static long modInverse(long a, long m) {
         long m0 = m;
         long y = 0, x = 1;
         long q, t;
@@ -131,5 +131,90 @@ public class LineLogic {
         if (x < 0) x += m0;
 
         return x;
+    }
+
+    // ------------------------------------------------------ //
+    //         FONCTION UTILISEES POUR LE CRACKING ICI        //
+    // ------------------------------------------------------ //
+
+    /**
+     * Calcule le score de continuité (bruit) sans toucher à l'image.
+     * Complexité : O(H) au lieu de O(W*H).
+     * Allocation mémoire : 0 (Zero-copy).
+     */
+    public static double getScoreEuclideanFast(byte[] encryptedColumn, int r, int s) {
+        int totalHeight = encryptedColumn.length;
+
+        // On se concentre uniquement sur le bloc principal (ex: 1024 lignes)
+        int blockSize = Integer.highestOneBit(totalHeight);
+
+        // Si l'image est trop petite
+        if (blockSize < 2) return Double.MAX_VALUE;
+
+        long totalDiffSq = 0;
+        int count = 0;
+
+        // Le multiplicateur de l'encryption (toujours impair grâce au 2L + 1)
+        long a = 2L * s + 1;
+
+        // On parcourt les lignes Y de 0 à blockSize-1
+        // On veut comparer la ligne reconstituée Y avec la ligne Y+1
+        for (int y = 0; y < blockSize - 1; y++) {
+
+            // On calcule ou se trouvent les pixels Y et Y+1
+            // dans l'image melangee en utilisant la formule d'encryption.
+            // pos = (r + a * y) % size
+            int indexCurrent = (int) ((r + a * y) % blockSize);
+            int indexNext    = (int) ((r + a * (y + 1)) % blockSize);
+
+            // Lecture des valeurs avec le masque 0xFF pour gérer le byte signe
+            int val1 = encryptedColumn[indexCurrent] & 0xFF;
+            int val2 = encryptedColumn[indexNext] & 0xFF;
+
+            // Calcul de la distance d'Euclide (Carre de la différence)
+            int diff = val1 - val2;
+            totalDiffSq += (diff * diff);
+            count++;
+        }
+
+        return (count == 0) ? Double.MAX_VALUE : (double) totalDiffSq / count;
+    }
+
+    /**
+     * Calcule le "choc" visuel à la frontiere entre le premier et le deuxième bloc.
+     * C'est ultra sensible au parametre R.
+     */
+    public static double getBoundaryScore(byte[] encryptedColumn, int r, int s) {
+        int totalHeight = encryptedColumn.length;
+
+        // Taille du premier bloc
+        int block1Size = Integer.highestOneBit(totalHeight);
+
+        // S'il n'y a qu'un seul bloc (ex: image 1024x1024), cette méthode ne peut pas marcher
+        // On retourne 0 au cas ou (normalement gere dans le bloc parent)
+        if (block1Size == totalHeight) return 0;
+
+        // Taille du deuxième bloc
+        int remaining = totalHeight - block1Size;
+        int block2Size = Integer.highestOneBit(remaining);
+
+        // Paramètre a
+        long a = 2L * s + 1;
+
+        // Pixel A le DERNIER pixel du premier bloc
+        // Sa position reelle depend de R dans le bloc 1
+        int lastLineOfBlock1 = block1Size - 1;
+        int indexA = (int) ((r + a * lastLineOfBlock1) % block1Size);
+
+        // Pixel B le PREMIER pixel du deuxième bloc
+        // Sa position réelle dépend de R dans le bloc 2
+        int indexB = block1Size + (int) ((r + a * 0) % block2Size);
+
+        // On compare :
+        int valA = encryptedColumn[indexA] & 0xFF;
+        int valB = encryptedColumn[indexB] & 0xFF;
+
+        // On veut que la différence soit minimale pour la meilleur continuite
+        return Math.abs(valA - valB);
     }
 }
