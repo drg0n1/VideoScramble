@@ -22,7 +22,7 @@ public class AudioExporter {
                 return;
             }
 
-            // 2. Préparer les flux
+            // 2. Prépare les flux
             AudioInputStream ais = AudioSystem.getAudioInputStream(inputFile);
             AudioFormat format = ais.getFormat();
 

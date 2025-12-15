@@ -472,7 +472,7 @@ public class VideoApp extends Application {
                 capGen.release();
                 writerGen.release();
 
-                updateMessage("Succès ! Vidéo: output_encrypted.avi + Audio: .wav");
+                updateMessage("Succès ! Vidéo: output_encrypted.avi + Audio: output_encrypted.wav");
                 return null;
             }
         };
