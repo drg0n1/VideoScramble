@@ -36,6 +36,7 @@ public class VideoApp extends Application {
     private ComboBox<String> videoSelector;
     private Button startButton;
     private Label statusLabel;
+    private Label fpsLabel;
 
     // UI Onglets
     private TabPane tabPane;
@@ -47,16 +48,15 @@ public class VideoApp extends Application {
     private ImageView encResultView;
     private TextField rEncField = new TextField("50");
     private TextField sEncField = new TextField("10");
-    private ToggleButton muteEncButton; // Bouton Mute Encrypt
+    private ToggleButton muteEncButton;
     private Button generateButton;
-    private ProgressBar progressBar;
 
     // UI Décryption
     private ImageView decSourceView;
     private ImageView decResultView;
     private TextField rDecField = new TextField("50");
     private TextField sDecField = new TextField("10");
-    private ToggleButton muteDecButton; // Bouton Mute Decrypt
+    private ToggleButton muteDecButton;
     private Button crackButton;
 
     // Moteurs
@@ -91,7 +91,6 @@ public class VideoApp extends Application {
         // Listener Changement d'onglet : Mettre à jour l'audio
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             updateAudioSettings();
-            // Synchro des boutons mute visuels si besoin (optionnel)
         });
 
         // Barre de statut
@@ -129,14 +128,11 @@ public class VideoApp extends Application {
         generateButton.setStyle("-fx-base: #ffcccc; -fx-font-weight: bold;");
         generateButton.setOnAction(e -> generateEncryptedVideo());
 
-        progressBar = new ProgressBar(0);
-        progressBar.setVisible(false);
-
         // Audio Control
         muteEncButton = new ToggleButton("Mute Audio");
         muteEncButton.setOnAction(e -> {
             audioPlayer.setMute(muteEncButton.isSelected());
-            muteDecButton.setSelected(muteEncButton.isSelected()); // Synchro visuelle
+            muteDecButton.setSelected(muteEncButton.isSelected());
         });
 
         // Listeners pour mise à jour temps réel
@@ -151,8 +147,7 @@ public class VideoApp extends Application {
                 new Label("Clé S:"), sEncField,
                 muteEncButton,
                 new Separator(Orientation.VERTICAL),
-                generateButton,
-                progressBar
+                generateButton
         );
 
         BorderPane content = new BorderPane();
@@ -182,7 +177,7 @@ public class VideoApp extends Application {
         muteDecButton = new ToggleButton("Mute Audio");
         muteDecButton.setOnAction(e -> {
             audioPlayer.setMute(muteDecButton.isSelected());
-            muteEncButton.setSelected(muteDecButton.isSelected()); // Synchro visuelle
+            muteEncButton.setSelected(muteDecButton.isSelected());
         });
 
         // Listeners
@@ -224,13 +219,16 @@ public class VideoApp extends Application {
         videoSelector.setValue("videos/cat.avi");
         videoSelector.setPrefWidth(200);
 
+        fpsLabel = new Label("FPS: -");
+        fpsLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #555;");
+        fpsLabel.setPadding(new Insets(0, 10, 0, 10));
+
         // Logic UI : Webcam vs Fichier
         webcamRadio.selectedProperty().addListener((obs, oldVal, newVal) -> {
             boolean isWebcam = newVal;
             videoSelector.setDisable(isWebcam);
             if (generateButton != null) generateButton.setDisable(isWebcam);
 
-            // Si on passe en webcam, on coupe l'audio immédiatement
             if (isWebcam) {
                 audioPlayer.stop();
                 muteEncButton.setDisable(true);
@@ -245,7 +243,8 @@ public class VideoApp extends Application {
         startButton.setStyle("-fx-font-weight: bold;");
         startButton.setOnAction(e -> startVideo());
 
-        HBox box = new HBox(15, new Label("Source :"), webcamRadio, videoRadio, videoSelector, startButton);
+        // Ajout du fpsLabel dans la HBox
+        HBox box = new HBox(15, new Label("Source :"), webcamRadio, videoRadio, videoSelector, startButton, fpsLabel);
         box.setPadding(new Insets(15));
         box.setAlignment(Pos.CENTER);
         box.setStyle("-fx-background-color: #f0f0f0; -fx-border-color: #ccc; -fx-border-width: 0 0 1 0;");
@@ -253,13 +252,13 @@ public class VideoApp extends Application {
     }
 
     private void startVideo() {
-        stopAcquisition(); // Reset complet (Audio + Video)
+        stopAcquisition();
 
         if (webcamRadio.isSelected()) {
             // MODE WEBCAM
             capture = new VideoCapture(0);
             statusLabel.setText("Source : Webcam (Audio désactivé)");
-            // On s'assure que l'audio est OFF
+            fpsLabel.setText("FPS: Web"); // Pas de FPS fixe pour webcam brute ici
             audioPlayer.stop();
 
         } else {
@@ -267,17 +266,19 @@ public class VideoApp extends Application {
             String path = videoSelector.getValue();
             capture = new VideoCapture(path);
 
-            // Récupération FPS pour synchro audio
+            // Récupération FPS
             double fps = capture.get(Videoio.CAP_PROP_FPS);
             if (fps <= 0) fps = 30.0;
 
-            statusLabel.setText("Source : " + path + " (" + (int)fps + " FPS)");
+            statusLabel.setText("Source : " + path);
+
+            fpsLabel.setText(String.format("FPS: %.2f", fps));
 
             // Chargement Audio
             audioPlayer.setFps(fps);
-            audioPlayer.load(path); // Cherchera le .wav automatiquement
+            audioPlayer.load(path);
             audioPlayer.play();
-            updateAudioSettings(); // Applique les clés R/S actuelles
+            updateAudioSettings();
         }
 
         if (capture.isOpened()) {
@@ -291,7 +292,6 @@ public class VideoApp extends Application {
     }
 
     private void stopAcquisition() {
-        // Arrêt Vidéo
         if (timer != null && !timer.isShutdown()) {
             timer.shutdown();
             try { timer.awaitTermination(33, TimeUnit.MILLISECONDS); }
@@ -299,13 +299,10 @@ public class VideoApp extends Application {
         }
         if (capture != null && capture.isOpened()) capture.release();
 
-        // Arrêt Audio
         audioPlayer.stop();
-
         cameraActive = false;
     }
 
-    // Envoie les clés et le mode au player audio
     private void updateAudioSettings() {
         boolean isEncryptMode = encryptTab.isSelected();
         int r, s;
@@ -313,17 +310,13 @@ public class VideoApp extends Application {
         if (isEncryptMode) {
             r = parseSafe(rEncField.getText());
             s = parseSafe(sEncField.getText());
-            // Mode Encrypt : On demande au player d'encrypter
             audioPlayer.setEffect(true, false, r, s);
         } else {
             r = parseSafe(rDecField.getText());
             s = parseSafe(sDecField.getText());
-            // Mode Decrypt : On demande au player de décrypter
             audioPlayer.setEffect(false, true, r, s);
         }
     }
-
-    // --- LOGIQUE OPENCV ---
 
     private void grabFrame() {
         if (capture != null && capture.isOpened()) {
@@ -340,12 +333,8 @@ public class VideoApp extends Application {
 
                 frame.release();
             } else {
-                // Boucle automatique si fichier
                 if (!webcamRadio.isSelected()) {
                     capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
-                    // Pour l'audio, la boucle est gérée plus difficilement en simple stream,
-                    // ici on recharge simplement pour faire simple ou on laisse l'audio finir.
-                    // (Dans une V2 on gérerait la boucle audio synchronisée)
                 }
             }
         }
@@ -387,8 +376,6 @@ public class VideoApp extends Application {
         processedFrame.release();
     }
 
-    // --- Methodes de Génération et Crack (Simplifiées ici mais présentes) ---
-
     private void generateEncryptedVideo() {
         if (webcamRadio.isSelected()) {
             statusLabel.setText("Impossible de générer un fichier depuis la webcam.");
@@ -399,8 +386,6 @@ public class VideoApp extends Application {
         if (inputPath == null || inputPath.isEmpty()) return;
 
         generateButton.setDisable(true);
-        progressBar.setVisible(true);
-        progressBar.setProgress(0);
         statusLabel.setText("Génération Vidéo + Audio en cours...");
 
         final int rKey = parseSafe(rEncField.getText());
@@ -415,28 +400,21 @@ public class VideoApp extends Application {
                     return null;
                 }
 
-                // Propriétés vidéo
                 double fps = capGen.get(Videoio.CAP_PROP_FPS);
                 if (fps <= 0) fps = 30.0;
-                int totalFrames = (int) capGen.get(Videoio.CAP_PROP_FRAME_COUNT);
                 int width = (int) capGen.get(Videoio.CAP_PROP_FRAME_WIDTH);
                 int height = (int) capGen.get(Videoio.CAP_PROP_FRAME_HEIGHT);
 
-                // Correction dimensions paires
                 if (width % 2 != 0) width--;
                 if (height % 2 != 0) height--;
                 Size size = new Size(width, height);
 
-                // Initialisation writer Vidéo
                 String outputVideoPath = "videos/output_encrypted.avi";
                 int fourcc = VideoWriter.fourcc('M', 'J', 'P', 'G');
                 VideoWriter writerGen = new VideoWriter(outputVideoPath, fourcc, fps, size, true);
 
-                // --- EXPORT AUDIO ---
-                // On lance l'export audio en parallèle ou juste avant la boucle vidéo
                 updateMessage("Export de l'audio crypté...");
                 String outputAudioPath = "videos/output_encrypted.wav";
-                // true = encrypt
                 AudioExporter.export(inputPath, outputAudioPath, rKey, sKey, true, fps);
 
                 if (!writerGen.isOpened()) {
@@ -445,7 +423,6 @@ public class VideoApp extends Application {
                     return null;
                 }
 
-                // Boucle de traitement Vidéo
                 Mat frame = new Mat();
                 Mat resized = new Mat();
                 int framesProcessed = 0;
@@ -463,8 +440,7 @@ public class VideoApp extends Application {
                     }
 
                     framesProcessed++;
-                    updateProgress(framesProcessed, totalFrames);
-                    updateMessage("Vidéo : Frame " + framesProcessed + " / " + totalFrames);
+                    updateMessage("Génération : Frame " + framesProcessed);
                 }
 
                 frame.release();
@@ -479,10 +455,8 @@ public class VideoApp extends Application {
 
         task.setOnSucceeded(e -> {
             statusLabel.setText(task.getMessage());
-            progressBar.setVisible(false);
             generateButton.setDisable(false);
 
-            // Ajouter à la liste pour lecture immédiate
             if (!videoSelector.getItems().contains("videos/output_encrypted.avi")) {
                 videoSelector.getItems().add("videos/output_encrypted.avi");
             }
@@ -490,7 +464,6 @@ public class VideoApp extends Application {
 
         task.setOnFailed(e -> {
             statusLabel.setText("Erreur lors de la génération.");
-            progressBar.setVisible(false);
             generateButton.setDisable(false);
             e.getSource().getException().printStackTrace();
         });
@@ -509,29 +482,32 @@ public class VideoApp extends Application {
         crackButton.setDisable(true);
 
         new Thread(() -> {
+            long startTime = System.currentTimeMillis();
+
             // Lancement du crack
             VideoCracker.CrackingResult result = VideoCracker.crackVideo(path);
+
+            long endTime = System.currentTimeMillis();
+            double durationSeconds = (endTime - startTime) / 1000.0;
 
             Platform.runLater(() -> {
                 crackButton.setDisable(false);
                 if (result.success) {
-                    statusLabel.setText("🔓 CLÉ TROUVÉE ! R=" + result.bestR + ", S=" + result.bestS);
+                    statusLabel.setText(String.format("🔓 CLÉ TROUVÉE ! R=%d, S=%d (Temps: %.3fs)", result.bestR, result.bestS, durationSeconds));
                     rDecField.setText(String.valueOf(result.bestR));
                     sDecField.setText(String.valueOf(result.bestS));
 
-                    // IMPORTANT : Appliquer le résultat à l'audio immédiatement
                     updateAudioSettings();
                 } else {
-                    statusLabel.setText("Échec : Vidéo trop sombre ou algorithme inefficace.");
+                    statusLabel.setText("Échec : Vidéo trop sombre ou algorithme inefficace. (Temps: " + durationSeconds + "s)");
                 }
             });
         }).start();
     }
 
-    // --- UTILS ---
     private ImageView createImageView() {
         ImageView iv = new ImageView();
-        iv.setFitWidth(450); // Ajusté un peu
+        iv.setFitWidth(450);
         iv.setPreserveRatio(true);
         iv.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.3), 10, 0, 0, 0);");
         return iv;
