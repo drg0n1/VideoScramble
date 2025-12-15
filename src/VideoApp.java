@@ -509,6 +509,7 @@ public class VideoApp extends Application {
         crackButton.setDisable(true);
 
         new Thread(() -> {
+            // Lancement du crack
             VideoCracker.CrackingResult result = VideoCracker.crackVideo(path);
 
             Platform.runLater(() -> {
@@ -517,21 +518,11 @@ public class VideoApp extends Application {
                     statusLabel.setText("🔓 CLÉ TROUVÉE ! R=" + result.bestR + ", S=" + result.bestS);
                     rDecField.setText(String.valueOf(result.bestR));
                     sDecField.setText(String.valueOf(result.bestS));
-                } else {
-                    statusLabel.setText("Échec : Vidéo trop sombre ou algorithme inefficace.");
-                }
-            });
-        }).start();
-        new Thread(() -> {
-            VideoCracker.CrackingResult result = VideoCracker.crackVideo(videoSelector.getValue());
-            Platform.runLater(() -> {
-                if (result.success) {
-                    statusLabel.setText("CLÉ TROUVÉE ! R=" + result.bestR + ", S=" + result.bestS);
-                    rDecField.setText(String.valueOf(result.bestR));
-                    sDecField.setText(String.valueOf(result.bestS));
+
+                    // IMPORTANT : Appliquer le résultat à l'audio immédiatement
                     updateAudioSettings();
                 } else {
-                    statusLabel.setText("Échec du crack.");
+                    statusLabel.setText("Échec : Vidéo trop sombre ou algorithme inefficace.");
                 }
             });
         }).start();
