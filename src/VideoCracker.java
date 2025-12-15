@@ -1,3 +1,12 @@
+/**
+ Nom :  Belhadj, Bernard
+ Prénom : Quentin, Elena
+ Groupe : S5-A
+ Projet : VideoScramble
+
+ Description : Cette classe implémente la logique d'analyse cryptanalytique (Brute-force). Elle tente de retrouver les clés R et S en analysant la cohérence statistique des pixels et le bruit de l'image.
+ */
+
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
@@ -27,6 +36,13 @@ public class VideoCracker {
         }
     }
 
+    /**
+     * Analyse la vidéo cible pour retrouver les paramètres de chiffrement (R et S).
+     * Procède par analyse de colonnes sondes et minimisation du score de bruit.
+     *
+     * @param videoPath Chemin de la vidéo à analyser.
+     * @return Un objet CrackingResult contenant les meilleures clés trouvées.
+     */
     public static CrackingResult crackVideo(String videoPath) {
         VideoCapture cap = new VideoCapture(videoPath);
         if (!cap.isOpened()) {
@@ -109,8 +125,12 @@ public class VideoCracker {
     }
 
     /**
-     * Extrait plusieurs colonnes de l'image pour l'analyse.
-     * Convertit en gris à la volée et retourne des tableaux de bytes bruts.
+     * Extrait plusieurs colonnes de l'image à des positions X fixes pour l'analyse.
+     * Optimise les performances en convertissant en gris et en extrayant uniquement les octets nécessaires.
+     *
+     * @param input          L'image source OpenCV.
+     * @param numberOfProbes Nombre de colonnes à extraire.
+     * @return Un tableau 2D d'octets représentant les colonnes extraites.
      */
     private static byte[][] extractProbeColumns(Mat input, int numberOfProbes) {
         Mat gray = new Mat();

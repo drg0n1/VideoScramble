@@ -1,18 +1,48 @@
+/**
+ Nom :  Belhadj, Bernard
+ Prénom : Quentin, Elena
+ Groupe : S5-A
+ Projet : VideoScramble
+
+ Description : Cette classe contient les algorithmes mathématiques de bas niveau. Elle gère la permutation des lignes de l'image (chiffrement/déchiffrement) et les calculs de distance euclidienne pour le cracking.
+ */
+
 import org.opencv.core.Mat;
 import java.math.BigInteger;
 import java.util.Arrays;
 
 public class LineLogic {
+
+    /**
+     * Chiffre une image entière en modifiant l'ordre de ses lignes (permutation affine).
+     *
+     * @param frame L'image OpenCV à traiter.
+     * @param r     Décalage R.
+     * @param s     Multiplicateur S.
+     */
     public static void encrypt(Mat frame, int r, int s) {
         processImageBase(frame, r, s, true);
     }
 
+    /**
+     * Déchiffre une image entière (permutation inverse).
+     *
+     * @param frame L'image OpenCV à traiter.
+     * @param r     Décalage R.
+     * @param s     Multiplicateur S.
+     */
     public static void decrypt(Mat frame, int r, int s) {
         processImageBase(frame, r, s, false);
     }
 
     /**
-     * Méthode commune qui gère la découpe en blocs de puissance de 2
+     * Méthode commune qui gère la découpe de l'image en blocs de hauteur puissance de 2.
+     * Applique ensuite le traitement ligne par ligne sur chaque bloc.
+     *
+     * @param frame     L'image source.
+     * @param r         La clé R.
+     * @param s         La clé S.
+     * @param isEncrypt Indique le sens de l'opération (chiffrement vs déchiffrement).
      */
     private static void processImageBase(Mat frame, int r, int s, boolean isEncrypt) {
         int height = frame.rows();      // hauteur de l'image
@@ -54,7 +84,15 @@ public class LineLogic {
     }
 
     /**
-     * Logique d'encryption : y' = (r + a * y) % size
+     * Applique la logique d'encryption sur un bloc de lignes : y' = (r + a * y) % size.
+     *
+     * @param source      Buffer complet source.
+     * @param destination Buffer complet destination.
+     * @param rowWidth    Largeur d'une ligne en octets.
+     * @param startY      Index de la première ligne du bloc courant.
+     * @param size        Nombre de lignes dans le bloc courant.
+     * @param r           Clé R.
+     * @param s           Clé S.
      */
     private static void processBlockEncrypt(byte[] source, byte[] destination, int rowWidth,
                                             int startY, int size, int r, int s) {
@@ -74,7 +112,15 @@ public class LineLogic {
     }
 
     /**
-     * Logique de décryption : y = a^-1 * (y' - r) % size (encryption inverse)
+     * Applique la logique de décryption sur un bloc de lignes : y = a^-1 * (y' - r) % size.
+     *
+     * @param source      Buffer complet source.
+     * @param destination Buffer complet destination.
+     * @param rowWidth    Largeur d'une ligne en octets.
+     * @param startY      Index de la première ligne du bloc courant.
+     * @param size        Nombre de lignes dans le bloc courant.
+     * @param r           Clé R.
+     * @param s           Clé S.
      */
     private static void processBlockDecrypt(byte[] source, byte[] destination, int rowWidth,
                                             int startY, int size, int r, int s) {
@@ -101,8 +147,12 @@ public class LineLogic {
     }
 
     /**
-     * Calcule l'inverse modulaire de a modulo m en utilisant l'algorithme d'Euclide étendu
-     * Complexité : O(log m)
+     * Calcule l'inverse modulaire de a modulo m en utilisant l'algorithme d'Euclide étendu.
+     * Complexité : O(log m).
+     *
+     * @param a Le nombre dont on cherche l'inverse.
+     * @param m Le module.
+     * @return L'inverse x tel que (a * x) % m == 1.
      */
     public static long modInverse(long a, long m) {
         long m0 = m;
@@ -138,9 +188,13 @@ public class LineLogic {
     // ------------------------------------------------------ //
 
     /**
-     * Calcule le score de continuité (bruit) sans toucher à l'image.
-     * Complexité : O(H) au lieu de O(W*H).
-     * Allocation mémoire : 0 (Zero-copy).
+     * Calcule le score de continuité (bruit) sans modifier l'image ("Zero-copy").
+     * Simule la reconstruction de la colonne pour mesurer la différence moyenne entre pixels voisins.
+     *
+     * @param encryptedColumn La colonne de pixels chiffrée.
+     * @param r               Hypothèse de clé R.
+     * @param s               Hypothèse de clé S.
+     * @return Le score de bruit (plus c'est bas, mieux c'est).
      */
     public static double getScoreEuclideanFast(byte[] encryptedColumn, int r, int s) {
         int totalHeight = encryptedColumn.length;
@@ -181,8 +235,13 @@ public class LineLogic {
     }
 
     /**
-     * Calcule le "choc" visuel à la frontiere entre le premier et le deuxième bloc.
-     * C'est ultra sensible au parametre R.
+     * Calcule le "choc" visuel (discontinuité) à la frontière entre le premier et le deuxième bloc de puissance de 2.
+     * Permet d'affiner la recherche de R.
+     *
+     * @param encryptedColumn La colonne de pixels chiffrée.
+     * @param r               Hypothèse de clé R.
+     * @param s               Hypothèse de clé S.
+     * @return La différence de valeur pixel à la frontière des blocs.
      */
     public static double getBoundaryScore(byte[] encryptedColumn, int r, int s) {
         int totalHeight = encryptedColumn.length;

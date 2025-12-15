@@ -1,23 +1,44 @@
-import java.util.Arrays;
+/**
+ Nom :  Belhadj, Bernard
+ Prénom : Quentin, Elena
+ Groupe : S5-A
+ Projet : VideoScramble
+
+ Description : Cette classe implémente la logique de permutation des données audio. Elle découpe les buffers en sous-blocs (puissance de 2) pour appliquer les transformations affines.
+ */
 
 public class AudioLogic {
 
     /**
-     * Chiffre un buffer audio (algo itératif pour couvrir tout le buffer).
+     * Chiffre un buffer audio complet en utilisant une permutation affine.
+     *
+     * @param buffer Le tableau de bytes audio à modifier.
+     * @param r      Paramètre de décalage.
+     * @param s      Paramètre multiplicatif.
      */
     public static void encrypt(byte[] buffer, int r, int s) {
         processAudioBuffer(buffer, r, s, true);
     }
 
     /**
-     * Déchiffre un buffer audio.
+     * Déchiffre un buffer audio complet (opération inverse).
+     *
+     * @param buffer Le tableau de bytes audio à modifier.
+     * @param r      Paramètre de décalage.
+     * @param s      Paramètre multiplicatif.
      */
     public static void decrypt(byte[] buffer, int r, int s) {
         processAudioBuffer(buffer, r, s, false);
     }
 
     /**
-     * Découpe le buffer en sous-blocs de puissance de 2 pour traiter 100% des données.
+     * Découpe le buffer en sous-blocs de taille puissance de 2 maximale pour traiter l'intégralité des données.
+     * Applique la permutation ou l'inverse permutation sur chaque sous-bloc.
+     *
+     * @param data      Les données brutes.
+     * @param r         Clé R.
+     * @param s         Clé S.
+     * @param isEncrypt Vrai pour chiffrer, Faux pour déchiffrer.
      */
     private static void processAudioBuffer(byte[] data, int r, int s, boolean isEncrypt) {
         int totalLength = data.length;
@@ -50,7 +71,15 @@ public class AudioLogic {
         }
     }
 
-    // y' = (r + a * y) % size
+    /**
+     * Applique la permutation affine : y' = (r + a * y) % size.
+     *
+     * @param src  Bloc source.
+     * @param dst  Bloc destination.
+     * @param size Taille du bloc (doit être une puissance de 2).
+     * @param r    Décalage.
+     * @param s    Générateur pour 'a' (a = 2s + 1).
+     */
     private static void permute(byte[] src, byte[] dst, int size, int r, int s) {
         long a = 2L * s + 1;
         for (int i = 0; i < size; i++) {
@@ -59,7 +88,15 @@ public class AudioLogic {
         }
     }
 
-    // y = a^-1 * (y' - r) % size
+    /**
+     * Applique la permutation inverse : y = a^-1 * (y' - r) % size.
+     *
+     * @param src  Bloc source.
+     * @param dst  Bloc destination.
+     * @param size Taille du bloc.
+     * @param r    Décalage.
+     * @param s    Générateur pour 'a'.
+     */
     private static void inversePermute(byte[] src, byte[] dst, int size, int r, int s) {
         long a = 2L * s + 1;
         long a_inv = LineLogic.modInverse(a, size);

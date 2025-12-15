@@ -1,3 +1,12 @@
+/**
+ Nom :  Belhadj, Bernard
+ Prénom : Quentin, Elena
+ Groupe : S5-A
+ Projet : VideoScramble
+
+ Description : Cette classe est le point d'entrée de l'interface graphique (JavaFX). Elle orchestre la capture vidéo, l'affichage UI, les pipelines de traitement (chiffrement/déchiffrement) et les interactions utilisateur.
+ */
+
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
@@ -67,11 +76,20 @@ public class VideoApp extends Application {
     // Audio Player
     private StreamingAudioPlayer audioPlayer = new StreamingAudioPlayer();
 
+
+    /**
+     * Point d'entrée principal de l'application. Charge la librairie native OpenCV.
+     * @param args Arguments de la ligne de commande.
+     */
     public static void main(String[] args) {
         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
         launch(args);
     }
 
+    /**
+     * Initialisation de l'interface graphique JavaFX (Stage, Scene, Layouts).
+     * @param primaryStage Le stage principal de l'application.
+     */
     @Override
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Video Scramble & Cracker Pro (+Audio)");
@@ -110,6 +128,9 @@ public class VideoApp extends Application {
         primaryStage.show();
     }
 
+    /**
+     * Crée et configure l'onglet dédié au chiffrement (UI et contrôles).
+     */
     private void createEncryptTab() {
         encryptTab = new Tab("🔒 CHIFFREMENT (Encoder)");
 
@@ -156,6 +177,9 @@ public class VideoApp extends Application {
         encryptTab.setContent(content);
     }
 
+    /**
+     * Crée et configure l'onglet dédié au déchiffrement (UI, contrôles et bouton Crack).
+     */
     private void createDecryptTab() {
         decryptTab = new Tab("🔓 DÉCHIFFREMENT (Décoder)");
 
@@ -201,6 +225,10 @@ public class VideoApp extends Application {
         decryptTab.setContent(content);
     }
 
+    /**
+     * Crée la barre supérieure permettant de choisir entre Webcam et Fichier Vidéo.
+     * @return HBox contenant les contrôles de sélection.
+     */
     private HBox createSourceSelection() {
         ToggleGroup group = new ToggleGroup();
         webcamRadio = new RadioButton("Webcam");
@@ -251,6 +279,10 @@ public class VideoApp extends Application {
         return box;
     }
 
+    /**
+     * Initialise la capture vidéo (Webcam ou Fichier) et lance le thread de récupération des frames.
+     * Initialise également le lecteur audio si la source est un fichier.
+     */
     private void startVideo() {
         stopAcquisition();
 
@@ -291,6 +323,9 @@ public class VideoApp extends Application {
         }
     }
 
+    /**
+     * Arrête l'acquisition vidéo, ferme les threads, le timer et libère les ressources audio et vidéo.
+     */
     private void stopAcquisition() {
         if (timer != null && !timer.isShutdown()) {
             timer.shutdown();
@@ -302,6 +337,10 @@ public class VideoApp extends Application {
         audioPlayer.stop();
         cameraActive = false;
     }
+
+    /**
+     * Met à jour les paramètres du lecteur audio (clés R/S et mode) en fonction de l'onglet actif et des champs de texte.
+     */
 
     private void updateAudioSettings() {
         boolean isEncryptMode = encryptTab.isSelected();
@@ -318,6 +357,9 @@ public class VideoApp extends Application {
         }
     }
 
+    /**
+     * Méthode appelée périodiquement pour récupérer une frame, la traiter et mettre à jour l'UI.
+     */
     private void grabFrame() {
         if (capture != null && capture.isOpened()) {
             Mat frame = new Mat();
@@ -340,6 +382,10 @@ public class VideoApp extends Application {
         }
     }
 
+    /**
+     * Traite une frame pour l'affichage dans l'onglet Chiffrement (Original -> Chiffré).
+     * @param cleanFrame La frame brute lue depuis la source.
+     */
     private void processEncryptionPipeline(Mat cleanFrame) {
         Image imgSource = mat2Image(cleanFrame);
         Mat processedFrame = cleanFrame.clone();
@@ -358,6 +404,10 @@ public class VideoApp extends Application {
         processedFrame.release();
     }
 
+    /**
+     * Traite une frame pour l'affichage dans l'onglet Déchiffrement (Chiffré -> Déchiffré).
+     * @param inputFrame La frame source (supposée être la vidéo chiffrée ou à déchiffrer).
+     */
     private void processDecryptionPipeline(Mat inputFrame) {
         Image imgInput = mat2Image(inputFrame);
         Mat processedFrame = inputFrame.clone();
@@ -376,6 +426,10 @@ public class VideoApp extends Application {
         processedFrame.release();
     }
 
+
+    /**
+     * Lance une tâche de fond pour générer un fichier vidéo (.avi) chiffré ainsi que son fichier audio associé (.wav).
+     */
     private void generateEncryptedVideo() {
         if (webcamRadio.isSelected()) {
             statusLabel.setText("Impossible de générer un fichier depuis la webcam.");
@@ -471,6 +525,9 @@ public class VideoApp extends Application {
         new Thread(task).start();
     }
 
+    /**
+     * Lance l'algorithme de cassage (Brute-force intelligent) dans un thread séparé et met à jour l'UI avec les clés trouvées.
+     */
     private void startCracking() {
         String path = videoSelector.getValue();
         if (webcamRadio.isSelected()) {
@@ -505,6 +562,10 @@ public class VideoApp extends Application {
         }).start();
     }
 
+    /**
+     * Helper pour créer une ImageView stylisée.
+     * @return Une instance configurée de ImageView.
+     */
     private ImageView createImageView() {
         ImageView iv = new ImageView();
         iv.setFitWidth(450);
@@ -513,10 +574,20 @@ public class VideoApp extends Application {
         return iv;
     }
 
+    /**
+     * Helper pour parser un entier depuis une String sans lever d'exception (retourne 0 en cas d'erreur).
+     * @param txt La chaîne à convertir.
+     * @return L'entier converti ou 0.
+     */
     private int parseSafe(String txt) {
         try { return Integer.parseInt(txt); } catch (Exception e) { return 0; }
     }
 
+    /**
+     * Convertit une matrice OpenCV (Mat) en Image JavaFX.
+     * @param frame La frame OpenCV BGR.
+     * @return L'objet Image pour affichage JavaFX.
+     */
     private Image mat2Image(Mat frame) {
         MatOfByte buffer = new MatOfByte();
         Imgcodecs.imencode(".png", frame, buffer);

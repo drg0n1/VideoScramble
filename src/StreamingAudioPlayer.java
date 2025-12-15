@@ -21,10 +21,22 @@ public class StreamingAudioPlayer {
     // Synchro Vidéo (par défaut 30 fps)
     private double videoFps = 30.0;
 
+
+    /**
+     * Définit le nombre d'images par seconde pour synchroniser les buffers audio.
+     *
+     * @param fps Le framerate de la vidéo associée.
+     */
     public void setFps(double fps) {
         if (fps > 0) this.videoFps = fps;
     }
 
+    /**
+     * Charge le fichier audio correspondant au chemin donné.
+     * Tente de trouver un fichier .wav si le chemin pointe vers une vidéo.
+     *
+     * @param filePath Chemin vers le fichier média.
+     */
     public void load(String filePath) {
         stop(); // Arrête tout avant de charger
         try {
@@ -55,6 +67,10 @@ public class StreamingAudioPlayer {
         }
     }
 
+    /**
+     * Lance le thread de lecture audio.
+     * Lit les données par blocs correspondant à la durée d'une frame vidéo et applique les effets si nécessaire.
+     */
     public void play() {
         if (audioInputStream == null || line == null) return;
 
@@ -64,7 +80,6 @@ public class StreamingAudioPlayer {
         playbackThread = new Thread(() -> {
             AudioFormat fmt = audioInputStream.getFormat();
 
-            // CALCUL CRITIQUE DE LA TAILLE DE FRAME AUDIO
             // On veut que 1 bloc audio = temps d'1 frame vidéo
             int frameSize = fmt.getFrameSize(); // Octets par sample (ex: 4 pour stéréo 16bit)
             float sampleRate = fmt.getSampleRate();
@@ -113,7 +128,9 @@ public class StreamingAudioPlayer {
         playbackThread.setDaemon(true);
         playbackThread.start();
     }
-
+    /**
+     * Arrête la lecture audio, ferme la ligne de données et termine le thread.
+     */
     public void stop() {
         isRunning = false;
         if (line != null) {
@@ -125,10 +142,23 @@ public class StreamingAudioPlayer {
         }
     }
 
+    /**
+     * Active ou désactive la sortie sonore (Mute).
+     *
+     * @param mute Vrai pour couper le son, Faux pour l'activer.
+     */
     public void setMute(boolean mute) {
         this.isMuted = mute;
     }
 
+    /**
+     * Configure les paramètres de l'effet audio en temps réel.
+     *
+     * @param encrypt Activer le mode chiffrement.
+     * @param decrypt Activer le mode déchiffrement.
+     * @param r       La clé R.
+     * @param s       La clé S.
+     */
     public void setEffect(boolean encrypt, boolean decrypt, int r, int s) {
         this.enableEncryption = encrypt;
         this.enableDecryption = decrypt;

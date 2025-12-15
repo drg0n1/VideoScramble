@@ -1,3 +1,12 @@
+/**
+ Nom :  Belhadj, Bernard
+ Prénom : Quentin, Elena
+ Groupe : S5-A
+ Projet : VideoScramble
+
+ Description : Cette classe gère l'exportation et la synchronisation de l'audio traité (chiffré ou déchiffré) vers un fichier WAV, en alignant les blocs audio sur les frames vidéo.
+ */
+
 import javax.sound.sampled.*;
 import java.io.*;
 import java.util.Arrays;
@@ -5,8 +14,15 @@ import java.util.Arrays;
 public class AudioExporter {
 
     /**
-     * Lit un fichier audio, applique l'effet (r, s) en synchronisation avec le FPS vidéo,
-     * et sauvegarde le résultat dans un nouveau fichier WAV.
+     * Lit un fichier audio source, applique l'effet de chiffrement ou de déchiffrement (clés r, s)
+     * en synchronisation avec le framerate (FPS) de la vidéo, et sauvegarde le résultat.
+     *
+     * @param inputPath  Chemin du fichier vidéo ou audio source.
+     * @param outputPath Chemin de destination du fichier WAV généré.
+     * @param r          La clé R (décalage).
+     * @param s          La clé S (multiplicateur).
+     * @param encrypt    Vrai pour chiffrer, Faux pour déchiffrer.
+     * @param fps        Le nombre d'images par seconde de la vidéo pour calculer la taille des chunks.
      */
     public static void export(String inputPath, String outputPath, int r, int s, boolean encrypt, double fps) {
         try {
