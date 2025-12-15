@@ -9,26 +9,24 @@ import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfByte;
 import org.opencv.core.Size;
+import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.VideoWriter;
 import org.opencv.videoio.Videoio;
-import org.opencv.imgproc.Imgproc;
 
 import java.io.ByteArrayInputStream;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-
-import org.opencv.core.MatOfByte;
-import org.opencv.imgcodecs.Imgcodecs;
 
 public class VideoApp extends Application {
 
@@ -45,25 +43,29 @@ public class VideoApp extends Application {
     private Tab decryptTab;
 
     // UI Encryption
-    private ImageView encSourceView; // Vue originale
-    private ImageView encResultView; // Vue cryptée
+    private ImageView encSourceView;
+    private ImageView encResultView;
     private TextField rEncField = new TextField("50");
     private TextField sEncField = new TextField("10");
-    private Button generateButton; // Remplacé le recordButton
+    private ToggleButton muteEncButton; // Bouton Mute Encrypt
+    private Button generateButton;
     private ProgressBar progressBar;
 
     // UI Décryption
-    private ImageView decSourceView; // Vue cryptée (input)
-    private ImageView decResultView; // Vue décryptée (output)
+    private ImageView decSourceView;
+    private ImageView decResultView;
     private TextField rDecField = new TextField("50");
     private TextField sDecField = new TextField("10");
+    private ToggleButton muteDecButton; // Bouton Mute Decrypt
     private Button crackButton;
 
-    // OpenCV
-    private VideoCapture capture; // Pour la preview uniquement
+    // Moteurs
+    private VideoCapture capture;
     private ScheduledExecutorService timer;
     private boolean cameraActive = false;
-    private String currentVideoPath = "";
+
+    // Audio Player
+    private StreamingAudioPlayer audioPlayer = new StreamingAudioPlayer();
 
     public static void main(String[] args) {
         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
@@ -72,12 +74,12 @@ public class VideoApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("Video Scramble & Cracker Pro");
+        primaryStage.setTitle("Video Scramble & Cracker Pro (+Audio)");
 
-        // Barre de sélection de source (en haut)
+        // Barre de sélection
         HBox sourceBox = createSourceSelection();
 
-        // Création des onglets
+        // Onglets
         tabPane = new TabPane();
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
@@ -86,18 +88,24 @@ public class VideoApp extends Application {
 
         tabPane.getTabs().addAll(encryptTab, decryptTab);
 
-        // Barre de statut (en bas)
+        // Listener Changement d'onglet : Mettre à jour l'audio
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+            updateAudioSettings();
+            // Synchro des boutons mute visuels si besoin (optionnel)
+        });
+
+        // Barre de statut
         statusLabel = new Label("Prêt. Sélectionnez une source.");
         statusLabel.setPadding(new Insets(5));
         statusLabel.setTextFill(Color.DARKBLUE);
 
-        // Layout principal
+        // Layout
         BorderPane root = new BorderPane();
         root.setTop(sourceBox);
         root.setCenter(tabPane);
         root.setBottom(statusLabel);
 
-        Scene scene = new Scene(root, 1100, 750);
+        Scene scene = new Scene(root, 1150, 800);
         primaryStage.setScene(scene);
         primaryStage.setOnCloseRequest(e -> stopAcquisition());
         primaryStage.show();
@@ -106,7 +114,6 @@ public class VideoApp extends Application {
     private void createEncryptTab() {
         encryptTab = new Tab("🔒 CHIFFREMENT (Encoder)");
 
-        // Vues
         encSourceView = createImageView();
         encResultView = createImageView();
 
@@ -118,21 +125,31 @@ public class VideoApp extends Application {
         videoBox.setPadding(new Insets(15));
 
         // Contrôles
-        HBox controls = new HBox(15);
-        controls.setAlignment(Pos.CENTER);
-        controls.setPadding(new Insets(15));
-
-        generateButton = new Button("Générer Vidéo Complète (.avi)");
+        generateButton = new Button("Générer Vidéo (.avi)");
         generateButton.setStyle("-fx-base: #ffcccc; -fx-font-weight: bold;");
         generateButton.setOnAction(e -> generateEncryptedVideo());
 
         progressBar = new ProgressBar(0);
-        progressBar.setPrefWidth(200);
         progressBar.setVisible(false);
 
+        // Audio Control
+        muteEncButton = new ToggleButton("Mute Audio");
+        muteEncButton.setOnAction(e -> {
+            audioPlayer.setMute(muteEncButton.isSelected());
+            muteDecButton.setSelected(muteEncButton.isSelected()); // Synchro visuelle
+        });
+
+        // Listeners pour mise à jour temps réel
+        rEncField.textProperty().addListener((o, old, nev) -> updateAudioSettings());
+        sEncField.textProperty().addListener((o, old, nev) -> updateAudioSettings());
+
+        HBox controls = new HBox(15);
+        controls.setAlignment(Pos.CENTER);
+        controls.setPadding(new Insets(15));
         controls.getChildren().addAll(
                 new Label("Clé R:"), rEncField,
                 new Label("Clé S:"), sEncField,
+                muteEncButton,
                 new Separator(Orientation.VERTICAL),
                 generateButton,
                 progressBar
@@ -147,7 +164,6 @@ public class VideoApp extends Application {
     private void createDecryptTab() {
         decryptTab = new Tab("🔓 DÉCHIFFREMENT (Décoder)");
 
-        // Vues
         decSourceView = createImageView();
         decResultView = createImageView();
 
@@ -158,18 +174,28 @@ public class VideoApp extends Application {
         videoBox.setAlignment(Pos.CENTER);
         videoBox.setPadding(new Insets(15));
 
-        // Contrôles
-        HBox controls = new HBox(15);
-        controls.setAlignment(Pos.CENTER);
-        controls.setPadding(new Insets(15));
-
-        crackButton = new Button("Auto-Crack (Trouver la clé)");
+        crackButton = new Button("Auto-Crack");
         crackButton.setStyle("-fx-base: #ccffcc; -fx-font-weight: bold;");
         crackButton.setOnAction(e -> startCracking());
 
+        // Audio Control
+        muteDecButton = new ToggleButton("Mute Audio");
+        muteDecButton.setOnAction(e -> {
+            audioPlayer.setMute(muteDecButton.isSelected());
+            muteEncButton.setSelected(muteDecButton.isSelected()); // Synchro visuelle
+        });
+
+        // Listeners
+        rDecField.textProperty().addListener((o, old, nev) -> updateAudioSettings());
+        sDecField.textProperty().addListener((o, old, nev) -> updateAudioSettings());
+
+        HBox controls = new HBox(15);
+        controls.setAlignment(Pos.CENTER);
+        controls.setPadding(new Insets(15));
         controls.getChildren().addAll(
                 new Label("Clé R:"), rDecField,
                 new Label("Clé S:"), sDecField,
+                muteDecButton,
                 new Separator(Orientation.VERTICAL),
                 crackButton
         );
@@ -178,14 +204,6 @@ public class VideoApp extends Application {
         content.setCenter(videoBox);
         content.setBottom(controls);
         decryptTab.setContent(content);
-    }
-
-    private ImageView createImageView() {
-        ImageView iv = new ImageView();
-        iv.setFitWidth(480);
-        iv.setPreserveRatio(true);
-        iv.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.3), 10, 0, 0, 0);");
-        return iv;
     }
 
     private HBox createSourceSelection() {
@@ -200,17 +218,27 @@ public class VideoApp extends Application {
         videoSelector.getItems().addAll(
                 "videos/cat.avi",
                 "videos/video.mp4",
-                "videos/output_encrypted.avi",
-                "videos/videoTest.m4v"
+                "videos/output_encrypted.avi"
         );
         videoSelector.setEditable(true);
         videoSelector.setValue("videos/cat.avi");
         videoSelector.setPrefWidth(200);
 
-        // On désactive le bouton de génération si c'est une webcam (car on ne peut pas "pré-générer" le futur)
+        // Logic UI : Webcam vs Fichier
         webcamRadio.selectedProperty().addListener((obs, oldVal, newVal) -> {
-            videoSelector.setDisable(newVal);
-            if (generateButton != null) generateButton.setDisable(newVal);
+            boolean isWebcam = newVal;
+            videoSelector.setDisable(isWebcam);
+            if (generateButton != null) generateButton.setDisable(isWebcam);
+
+            // Si on passe en webcam, on coupe l'audio immédiatement
+            if (isWebcam) {
+                audioPlayer.stop();
+                muteEncButton.setDisable(true);
+                muteDecButton.setDisable(true);
+            } else {
+                muteEncButton.setDisable(false);
+                muteDecButton.setDisable(false);
+            }
         });
 
         startButton = new Button("Charger / Démarrer");
@@ -224,6 +252,77 @@ public class VideoApp extends Application {
         return box;
     }
 
+    private void startVideo() {
+        stopAcquisition(); // Reset complet (Audio + Video)
+
+        if (webcamRadio.isSelected()) {
+            // MODE WEBCAM
+            capture = new VideoCapture(0);
+            statusLabel.setText("Source : Webcam (Audio désactivé)");
+            // On s'assure que l'audio est OFF
+            audioPlayer.stop();
+
+        } else {
+            // MODE FICHIER
+            String path = videoSelector.getValue();
+            capture = new VideoCapture(path);
+
+            // Récupération FPS pour synchro audio
+            double fps = capture.get(Videoio.CAP_PROP_FPS);
+            if (fps <= 0) fps = 30.0;
+
+            statusLabel.setText("Source : " + path + " (" + (int)fps + " FPS)");
+
+            // Chargement Audio
+            audioPlayer.setFps(fps);
+            audioPlayer.load(path); // Cherchera le .wav automatiquement
+            audioPlayer.play();
+            updateAudioSettings(); // Applique les clés R/S actuelles
+        }
+
+        if (capture.isOpened()) {
+            cameraActive = true;
+            Runnable frameGrabber = this::grabFrame;
+            timer = Executors.newSingleThreadScheduledExecutor();
+            timer.scheduleAtFixedRate(frameGrabber, 0, 33, TimeUnit.MILLISECONDS);
+        } else {
+            statusLabel.setText("Erreur : Impossible d'ouvrir la vidéo.");
+        }
+    }
+
+    private void stopAcquisition() {
+        // Arrêt Vidéo
+        if (timer != null && !timer.isShutdown()) {
+            timer.shutdown();
+            try { timer.awaitTermination(33, TimeUnit.MILLISECONDS); }
+            catch (InterruptedException e) { e.printStackTrace(); }
+        }
+        if (capture != null && capture.isOpened()) capture.release();
+
+        // Arrêt Audio
+        audioPlayer.stop();
+
+        cameraActive = false;
+    }
+
+    // Envoie les clés et le mode au player audio
+    private void updateAudioSettings() {
+        boolean isEncryptMode = encryptTab.isSelected();
+        int r, s;
+
+        if (isEncryptMode) {
+            r = parseSafe(rEncField.getText());
+            s = parseSafe(sEncField.getText());
+            // Mode Encrypt : On demande au player d'encrypter
+            audioPlayer.setEffect(true, false, r, s);
+        } else {
+            r = parseSafe(rDecField.getText());
+            s = parseSafe(sDecField.getText());
+            // Mode Decrypt : On demande au player de décrypter
+            audioPlayer.setEffect(false, true, r, s);
+        }
+    }
+
     // --- LOGIQUE OPENCV ---
 
     private void grabFrame() {
@@ -231,7 +330,6 @@ public class VideoApp extends Application {
             Mat frame = new Mat();
             if (capture.read(frame)) {
 
-                // On vérifie quel onglet est actif pour savoir quoi faire
                 boolean isEncryptMode = encryptTab.isSelected();
 
                 if (isEncryptMode) {
@@ -242,36 +340,39 @@ public class VideoApp extends Application {
 
                 frame.release();
             } else {
-                if (!webcamRadio.isSelected()) capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
+                // Boucle automatique si fichier
+                if (!webcamRadio.isSelected()) {
+                    capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
+                    // Pour l'audio, la boucle est gérée plus difficilement en simple stream,
+                    // ici on recharge simplement pour faire simple ou on laisse l'audio finir.
+                    // (Dans une V2 on gérerait la boucle audio synchronisée)
+                }
             }
         }
     }
 
     private void processEncryptionPipeline(Mat cleanFrame) {
-        // Afficher la source
         Image imgSource = mat2Image(cleanFrame);
-
-        // Cloner et Encrypter (pour la preview)
         Mat processedFrame = cleanFrame.clone();
+
         int r = parseSafe(rEncField.getText());
         int s = parseSafe(sEncField.getText());
+
         LineLogic.encrypt(processedFrame, r, s);
 
-        // Afficher le résultat
         Image imgResult = mat2Image(processedFrame);
 
         Platform.runLater(() -> {
             encSourceView.setImage(imgSource);
             encResultView.setImage(imgResult);
         });
-
         processedFrame.release();
     }
 
     private void processDecryptionPipeline(Mat inputFrame) {
         Image imgInput = mat2Image(inputFrame);
-
         Mat processedFrame = inputFrame.clone();
+
         int r = parseSafe(rDecField.getText());
         int s = parseSafe(sDecField.getText());
 
@@ -283,30 +384,28 @@ public class VideoApp extends Application {
             decSourceView.setImage(imgInput);
             decResultView.setImage(imgResult);
         });
-
         processedFrame.release();
     }
 
+    // --- Methodes de Génération et Crack (Simplifiées ici mais présentes) ---
+
     private void generateEncryptedVideo() {
         if (webcamRadio.isSelected()) {
-            statusLabel.setText("Impossible de générer un fichier depuis la webcam (flux infini).");
+            statusLabel.setText("Impossible de générer un fichier depuis la webcam.");
             return;
         }
 
         String inputPath = videoSelector.getValue();
         if (inputPath == null || inputPath.isEmpty()) return;
 
-        // Configuration UI
         generateButton.setDisable(true);
         progressBar.setVisible(true);
         progressBar.setProgress(0);
-        statusLabel.setText("Génération du fichier crypté en cours...");
+        statusLabel.setText("Génération Vidéo + Audio en cours...");
 
-        // Clés
         final int rKey = parseSafe(rEncField.getText());
         final int sKey = parseSafe(sEncField.getText());
 
-        // Tâche de fond
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() throws Exception {
@@ -328,27 +427,32 @@ public class VideoApp extends Application {
                 if (height % 2 != 0) height--;
                 Size size = new Size(width, height);
 
-                // Initialisation writer
-                String outputPath = "videos/output_encrypted.avi";
+                // Initialisation writer Vidéo
+                String outputVideoPath = "videos/output_encrypted.avi";
                 int fourcc = VideoWriter.fourcc('M', 'J', 'P', 'G');
-                VideoWriter writerGen = new VideoWriter(outputPath, fourcc, fps, size, true);
+                VideoWriter writerGen = new VideoWriter(outputVideoPath, fourcc, fps, size, true);
+
+                // --- EXPORT AUDIO ---
+                // On lance l'export audio en parallèle ou juste avant la boucle vidéo
+                updateMessage("Export de l'audio crypté...");
+                String outputAudioPath = "videos/output_encrypted.wav";
+                // true = encrypt
+                AudioExporter.export(inputPath, outputAudioPath, rKey, sKey, true, fps);
 
                 if (!writerGen.isOpened()) {
                     capGen.release();
-                    updateMessage("Erreur : Impossible de créer le fichier de sortie.");
+                    updateMessage("Erreur Writer Vidéo.");
                     return null;
                 }
 
-                // Boucle de traitement
+                // Boucle de traitement Vidéo
                 Mat frame = new Mat();
-                Mat resized = new Mat(); // Pour la correction de taille si besoin
+                Mat resized = new Mat();
                 int framesProcessed = 0;
 
                 while (capGen.read(frame)) {
-                    // Vérification annulation
                     if (isCancelled()) break;
 
-                    // Redimensionnement si nécessaire (pairs)
                     if (frame.width() != width || frame.height() != height) {
                         Imgproc.resize(frame, resized, size);
                         LineLogic.encrypt(resized, rKey, sKey);
@@ -360,29 +464,28 @@ public class VideoApp extends Application {
 
                     framesProcessed++;
                     updateProgress(framesProcessed, totalFrames);
+                    updateMessage("Vidéo : Frame " + framesProcessed + " / " + totalFrames);
                 }
 
-                // Nettoyage
                 frame.release();
                 resized.release();
                 capGen.release();
                 writerGen.release();
-                updateMessage("Génération terminée : " + outputPath);
+
+                updateMessage("Succès ! Vidéo: output_encrypted.avi + Audio: .wav");
                 return null;
             }
         };
 
-        // Callbacks UI
         task.setOnSucceeded(e -> {
             statusLabel.setText(task.getMessage());
             progressBar.setVisible(false);
             generateButton.setDisable(false);
 
-            // Ajouter le nouveau fichier à la liste si nécessaire
+            // Ajouter à la liste pour lecture immédiate
             if (!videoSelector.getItems().contains("videos/output_encrypted.avi")) {
                 videoSelector.getItems().add("videos/output_encrypted.avi");
             }
-            // Sélectionner le fichier généré pour pouvoir le tester immédiatement
         });
 
         task.setOnFailed(e -> {
@@ -392,7 +495,6 @@ public class VideoApp extends Application {
             e.getSource().getException().printStackTrace();
         });
 
-        // Lancer le thread
         new Thread(task).start();
     }
 
@@ -420,30 +522,28 @@ public class VideoApp extends Application {
                 }
             });
         }).start();
+        new Thread(() -> {
+            VideoCracker.CrackingResult result = VideoCracker.crackVideo(videoSelector.getValue());
+            Platform.runLater(() -> {
+                if (result.success) {
+                    statusLabel.setText("CLÉ TROUVÉE ! R=" + result.bestR + ", S=" + result.bestS);
+                    rDecField.setText(String.valueOf(result.bestR));
+                    sDecField.setText(String.valueOf(result.bestS));
+                    updateAudioSettings();
+                } else {
+                    statusLabel.setText("Échec du crack.");
+                }
+            });
+        }).start();
     }
 
-    // --- UTILITAIRES ---
-    private void startVideo() {
-        stopAcquisition(); // Reset complet
-
-        if (webcamRadio.isSelected()) {
-            capture = new VideoCapture(0);
-            statusLabel.setText("Source : Webcam");
-        } else {
-            String path = videoSelector.getValue();
-            capture = new VideoCapture(path);
-            statusLabel.setText("Source : " + path);
-        }
-
-        if (capture.isOpened()) {
-            cameraActive = true;
-            Runnable frameGrabber = this::grabFrame;
-            timer = Executors.newSingleThreadScheduledExecutor();
-            timer.scheduleAtFixedRate(frameGrabber, 0, 33, TimeUnit.MILLISECONDS);
-        } else {
-            Alert alert = new Alert(Alert.AlertType.ERROR, "Impossible d'ouvrir la vidéo.");
-            alert.showAndWait();
-        }
+    // --- UTILS ---
+    private ImageView createImageView() {
+        ImageView iv = new ImageView();
+        iv.setFitWidth(450); // Ajusté un peu
+        iv.setPreserveRatio(true);
+        iv.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.3), 10, 0, 0, 0);");
+        return iv;
     }
 
     private int parseSafe(String txt) {
@@ -454,15 +554,5 @@ public class VideoApp extends Application {
         MatOfByte buffer = new MatOfByte();
         Imgcodecs.imencode(".png", frame, buffer);
         return new Image(new ByteArrayInputStream(buffer.toArray()));
-    }
-
-    private void stopAcquisition() {
-        if (timer != null && !timer.isShutdown()) {
-            timer.shutdown();
-            try { timer.awaitTermination(33, TimeUnit.MILLISECONDS); }
-            catch (InterruptedException e) { e.printStackTrace(); }
-        }
-        if (capture != null && capture.isOpened()) capture.release();
-        cameraActive = false;
     }
 }
