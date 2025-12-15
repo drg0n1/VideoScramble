@@ -1,15 +1,18 @@
 import org.opencv.core.Mat;
-import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
 
 public class VideoCracker {
 
-    // On augmente un peu la plage de recherche pour être sûr
+    // Plages de recherche
     private static final int MAX_SEARCH_S = 127;
     private static final int MAX_SEARCH_R = 255;
 
+    // Nombre de colonnes à analyser pour éviter le piège des zones unies
+    private static final int PROBE_COUNT = 3;
+
+    // Classe pour stocker le résultat
     public static class CrackingResult {
         public int bestR;
         public int bestS;
@@ -30,122 +33,118 @@ public class VideoCracker {
             return new CrackingResult(0, 0, Double.MAX_VALUE, false);
         }
 
-        // On prend une frame au milieu pour éviter les fondus au noir du début/fin
+        // On récupère une frame au milieu de la vidéo (plus sûr que le début car fade-in)
         int totalFrames = (int) cap.get(Videoio.CAP_PROP_FRAME_COUNT);
-        Mat workFrame = getFrameAt(cap, totalFrames / 2);
-
-        // Validation frame (à 80% de la vidéo)
-        Mat controlFrame = getFrameAt(cap, (int)(totalFrames * 0.8));
-
-        cap.release();
+        Mat workFrame = new Mat();
+        cap.set(Videoio.CAP_PROP_POS_FRAMES, totalFrames / 2);
+        cap.read(workFrame);
+        cap.release(); // On libère le lien avec le fichier vidéo
 
         if (workFrame.empty()) return new CrackingResult(0, 0, Double.MAX_VALUE, false);
 
-        // Prétraitement : Gris + Petite largeur pour accélérer (ex: 100px de large)
-        Mat processed = preprocessFrame(workFrame);
-        Mat tempFrame = new Mat();
+        // Extraction multi-sondes
+        // On extrait 3 colonnes (byte[]) reparties sur l'image (25%, 50%, 75%)
+        // Apres on n'a plus besoin d'OpenCV pour le calcul (parceque c'est super lourd openCV)
+        byte[][] probes = extractProbeColumns(workFrame, PROBE_COUNT);
 
-        // Etape 1 : Trouver S
-        // On ne calcule le score que sur le premier bloc (HighestOneBit) pour 'isoler' le S et ne pas être perturbé par le R.
-        int height = processed.rows();
-        int mainBlockHeight = Integer.highestOneBit(height); // Ex: 512 pour 1000
+        // On libère immediatement la memoire de l'image complete
+        workFrame.release();
 
+        // Recherche de S (diviser pour regner)
+        // On fixe R=0 pour trouver la coherence d'ecartement (S)
         int bestS = 0;
         double bestScoreS = Double.MAX_VALUE;
+
         for (int s = 0; s <= MAX_SEARCH_S; s++) {
-            processed.copyTo(tempFrame);
-            // On teste avec R=0
-            LineLogic.decrypt(tempFrame, 0, s);
+            double totalScoreCurrentS = 0;
 
-            // On mesure le bruit uniquement sur le bloc principal (lignes 0 à mainBlockHeight) pour isoler S
-            double score = calculateVerticalNoise(tempFrame, 0, mainBlockHeight);
+            // On cumule le score de bruit sur nos 3 colonnes
+            for (byte[] columnProbe : probes) {
+                // Appel a la methode optimisee de LineLogic
+                totalScoreCurrentS += LineLogic.getScoreEuclideanFast(columnProbe, 0, s);
+            }
 
-            if (score < bestScoreS) {
-                bestScoreS = score;
+            if (totalScoreCurrentS < bestScoreS) {
+                bestScoreS = totalScoreCurrentS;
                 bestS = s;
             }
         }
-        System.out.println("Candidat S trouvé : " + bestS);
 
-        // Etape 2 : Trouver R
-        // On cherche le R qui va aligner les blocs entre eux
-        // On calcule donc le score sur toute l'image.
+        System.out.println("Candidat S trouve : " + bestS + " (Score cumule : " + bestScoreS + ")");
 
         int bestR = 0;
         double bestScoreR = Double.MAX_VALUE;
-        for (int r = 0; r <= MAX_SEARCH_R; r++) {
-            processed.copyTo(tempFrame);
-            LineLogic.decrypt(tempFrame, r, bestS);
-            // Score sur toute la hauteur cette fois car on cherche à aligner les blocs
-            double score = calculateVerticalNoise(tempFrame, 0, height);
 
-            if (score < bestScoreR) {
-                bestScoreR = score;
+        // Est-ce qu'on a plusieurs blocs ?
+        // On regarde la taille de la première sonde
+        boolean canUseBoundary = Integer.highestOneBit(probes[0].length) < probes[0].length;
+
+        for (int r = 0; r <= MAX_SEARCH_R; r++) {
+            double currentScore = 0;
+
+            for (byte[] columnProbe : probes) {
+                // On calcule la cohérence interne
+                double internalNoise = LineLogic.getScoreEuclideanFast(columnProbe, r, bestS);
+
+                // On calcule la cohérence de frontière si possible
+                // Pas de boucle donc linéraire
+                double boundaryNoise = 0;
+                if (canUseBoundary) {
+                    // On multiplie par un gros poids pour eviter les valeurs nulles
+                    boundaryNoise = LineLogic.getBoundaryScore(columnProbe, r, bestS) * 100.0;
+                }
+
+                currentScore += internalNoise + boundaryNoise;
+            }
+
+            if (currentScore < bestScoreR) {
+                bestScoreR = currentScore;
                 bestR = r;
             }
         }
-        System.out.println("Candidat R trouvé : " + bestR);
 
-        // Nettoyage
-        workFrame.release();
-        controlFrame.release();
-        processed.release();
-        tempFrame.release();
+        System.out.println("Candidat R trouve : " + bestR);
 
         return new CrackingResult(bestR, bestS, bestScoreR, true);
     }
 
-    private static Mat getFrameAt(VideoCapture cap, int index) {
-        cap.set(Videoio.CAP_PROP_POS_FRAMES, index);
-        Mat frame = new Mat();
-        cap.read(frame);
-        return frame;
-    }
-
-    private static Mat preprocessFrame(Mat input) {
-        Mat resized = new Mat();
-        Mat gray = new Mat();
-        Imgproc.cvtColor(input, gray, Imgproc.COLOR_BGR2GRAY);
-        // On réduit la largeur à 64px pour aller très vite, la hauteur reste la même
-        Imgproc.resize(gray, resized, new Size(64, input.rows()));
-        gray.release();
-        return resized;
-    }
-
     /**
-     * Calcule le bruit vertical (différence entre ligne Y et Y+1).
+     * Extrait plusieurs colonnes de l'image pour l'analyse.
+     * Convertit en gris à la volée et retourne des tableaux de bytes bruts.
      */
-    private static double calculateVerticalNoise(Mat frame, int startY, int endY) {
-        int width = frame.cols();
-        int totalRows = frame.rows();
+    private static byte[][] extractProbeColumns(Mat input, int numberOfProbes) {
+        Mat gray = new Mat();
+        // Conversion en niveaux de gris (1 canal)
+        Imgproc.cvtColor(input, gray, Imgproc.COLOR_BGR2GRAY);
 
-        // Sécurité bornes
-        if (endY > totalRows) endY = totalRows;
-        if (startY < 0) startY = 0;
+        int width = gray.cols();
+        int height = gray.rows();
 
-        // On recupère les données
-        byte[] data = new byte[width * totalRows];
-        frame.get(0, 0, data);
+        // Lecture de TOUS les pixels dans un tampon
+        byte[] allPixels = new byte[width * height];
+        gray.get(0, 0, allPixels);
 
-        long totalDiffSq = 0;
-        int count = 0;
+        // Preparation des colonnes de sortie
+        byte[][] extractedProbes = new byte[numberOfProbes][height];
 
-        // On s'arrête à endY - 1 car on compare Y avec Y+1
-        for (int y = startY; y < endY - 1; y++) {
-            int rowOffsetCurrent = y * width;
-            int rowOffsetNext = (y + 1) * width;
+        // Calcul des positions X (ex: 25%, 50%, 75% pour 3 sondes)
+        int[] xPositions = new int[numberOfProbes];
+        for (int i = 0; i < numberOfProbes; i++) {
+            xPositions[i] = (width * (i + 1)) / (numberOfProbes + 1);
+        }
 
-            for (int x = 0; x < width; x++) {
-                int val1 = data[rowOffsetCurrent + x] & 0xFF;
-                int val2 = data[rowOffsetNext + x] & 0xFF;
+        // Remplissage des colonnes en parcourant le tampon unique
+        for (int y = 0; y < height; y++) {
+            int rowOffset = y * width;
 
-                int diff = val1 - val2;
-                totalDiffSq += (diff * diff);
-                count++;    
+            for (int i = 0; i < numberOfProbes; i++) {
+                int pixelIndex = rowOffset + xPositions[i];
+                extractedProbes[i][y] = allPixels[pixelIndex];
             }
         }
 
-        if (count == 0) return Double.MAX_VALUE;
-        return (double) totalDiffSq / count;
+        // On rend la memoire
+        gray.release();
+        return extractedProbes;
     }
 }
