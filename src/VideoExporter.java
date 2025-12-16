@@ -1,3 +1,12 @@
+/**
+ Nom :  Belhadj, Bernard
+ Prénom : Quentin, Elena
+ Groupe : S5-A
+ Projet : VideoScramble
+
+ Description : Cette classe gère l'exportation des vidéos cryptées ou décryptées en utilisant les clés R et S fournies.
+ */
+
 import javafx.concurrent.Task;
 import org.opencv.core.Mat;
 import org.opencv.core.Size;
