@@ -25,11 +25,8 @@ import javafx.stage.Stage;
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
-import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
-import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
-import org.opencv.videoio.VideoWriter;
 import org.opencv.videoio.Videoio;
 
 import java.io.ByteArrayInputStream;
@@ -39,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 
 public class VideoApp extends Application {
 
-    // UI Elements Globaux
+    // UI elements globaux
     private RadioButton webcamRadio;
     private RadioButton videoRadio;
     private ComboBox<String> videoSelector;
@@ -47,12 +44,12 @@ public class VideoApp extends Application {
     private Label statusLabel;
     private Label fpsLabel;
 
-    // UI Onglets
+    // UI onglets
     private TabPane tabPane;
     private Tab encryptTab;
     private Tab decryptTab;
 
-    // UI Encryption
+    // UI encryption
     private ImageView encSourceView;
     private ImageView encResultView;
     private TextField rEncField = new TextField("50");
@@ -60,7 +57,7 @@ public class VideoApp extends Application {
     private ToggleButton muteEncButton;
     private Button generateButton;
 
-    // UI Décryption
+    // UI décryption
     private ImageView decSourceView;
     private ImageView decResultView;
     private TextField rDecField = new TextField("50");
@@ -73,7 +70,12 @@ public class VideoApp extends Application {
     private ScheduledExecutorService timer;
     private boolean cameraActive = false;
 
-    // Audio Player
+    // Variables pour le calcul des FPS réels
+    private long lastFpsCheckTime = 0;
+    private int framesProcessedCount = 0;
+    private double currentSourceFps = 0.0;
+
+    // Audio player
     private StreamingAudioPlayer audioPlayer = new StreamingAudioPlayer();
 
 
@@ -106,7 +108,7 @@ public class VideoApp extends Application {
 
         tabPane.getTabs().addAll(encryptTab, decryptTab);
 
-        // Listener Changement d'onglet : Mettre à jour l'audio
+        // Listener changement d'onglet : Mettre à jour l'audio
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             updateAudioSettings();
         });
@@ -149,7 +151,7 @@ public class VideoApp extends Application {
         generateButton.setStyle("-fx-base: #ffcccc; -fx-font-weight: bold;");
         generateButton.setOnAction(e -> generateEncryptedVideo());
 
-        // Audio Control
+        // Audio control
         muteEncButton = new ToggleButton("Mute Audio");
         muteEncButton.setOnAction(e -> {
             audioPlayer.setMute(muteEncButton.isSelected());
@@ -197,7 +199,7 @@ public class VideoApp extends Application {
         crackButton.setStyle("-fx-base: #ccffcc; -fx-font-weight: bold;");
         crackButton.setOnAction(e -> startCracking());
 
-        // Audio Control
+        // Audio control
         muteDecButton = new ToggleButton("Mute Audio");
         muteDecButton.setOnAction(e -> {
             audioPlayer.setMute(muteDecButton.isSelected());
@@ -251,7 +253,7 @@ public class VideoApp extends Application {
         fpsLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #555;");
         fpsLabel.setPadding(new Insets(0, 10, 0, 10));
 
-        // Logic UI : Webcam vs Fichier
+        // Logic UI : webcam vs fichier
         webcamRadio.selectedProperty().addListener((obs, oldVal, newVal) -> {
             boolean isWebcam = newVal;
             videoSelector.setDisable(isWebcam);
@@ -271,7 +273,6 @@ public class VideoApp extends Application {
         startButton.setStyle("-fx-font-weight: bold;");
         startButton.setOnAction(e -> startVideo());
 
-        // Ajout du fpsLabel dans la HBox
         HBox box = new HBox(15, new Label("Source :"), webcamRadio, videoRadio, videoSelector, startButton, fpsLabel);
         box.setPadding(new Insets(15));
         box.setAlignment(Pos.CENTER);
@@ -286,11 +287,16 @@ public class VideoApp extends Application {
     private void startVideo() {
         stopAcquisition();
 
+        // Reset compteurs FPS
+        framesProcessedCount = 0;
+        lastFpsCheckTime = System.nanoTime();
+
         if (webcamRadio.isSelected()) {
             // MODE WEBCAM
             capture = new VideoCapture(0);
             statusLabel.setText("Source : Webcam (Audio désactivé)");
-            fpsLabel.setText("FPS: Web"); // Pas de FPS fixe pour webcam brute ici
+            fpsLabel.setText("FPS: Web");
+            currentSourceFps = 0.0;
             audioPlayer.stop();
 
         } else {
@@ -301,12 +307,12 @@ public class VideoApp extends Application {
             // Récupération FPS
             double fps = capture.get(Videoio.CAP_PROP_FPS);
             if (fps <= 0) fps = 30.0;
+            currentSourceFps = fps;
 
             statusLabel.setText("Source : " + path);
+            fpsLabel.setText(String.format("FPS: %.1f (Src) / - (Réel)", currentSourceFps));
 
-            fpsLabel.setText(String.format("FPS: %.2f", fps));
-
-            // Chargement Audio
+            // Chargement audio
             audioPlayer.setFps(fps);
             audioPlayer.load(path);
             audioPlayer.play();
@@ -362,6 +368,27 @@ public class VideoApp extends Application {
      */
     private void grabFrame() {
         if (capture != null && capture.isOpened()) {
+
+            // Calcul FPS réel
+            long now = System.nanoTime();
+            if (lastFpsCheckTime == 0) lastFpsCheckTime = now;
+
+            framesProcessedCount++;
+            if (now - lastFpsCheckTime >= 1_000_000_000) { // Toutes les secondes
+                double realFps = framesProcessedCount * 1_000_000_000.0 / (now - lastFpsCheckTime);
+
+                Platform.runLater(() -> {
+                    if (webcamRadio.isSelected()) {
+                        fpsLabel.setText(String.format("FPS: Web / %.1f (Réel)", realFps));
+                    } else {
+                        fpsLabel.setText(String.format("FPS: %.1f (Src) / %.1f (Réel)", currentSourceFps, realFps));
+                    }
+                });
+
+                framesProcessedCount = 0;
+                lastFpsCheckTime = now;
+            }
+
             Mat frame = new Mat();
             if (capture.read(frame)) {
 
@@ -445,67 +472,8 @@ public class VideoApp extends Application {
         final int rKey = parseSafe(rEncField.getText());
         final int sKey = parseSafe(sEncField.getText());
 
-        Task<Void> task = new Task<>() {
-            @Override
-            protected Void call() throws Exception {
-                VideoCapture capGen = new VideoCapture(inputPath);
-                if (!capGen.isOpened()) {
-                    updateMessage("Erreur : Impossible d'ouvrir le fichier source.");
-                    return null;
-                }
-
-                double fps = capGen.get(Videoio.CAP_PROP_FPS);
-                if (fps <= 0) fps = 30.0;
-                int width = (int) capGen.get(Videoio.CAP_PROP_FRAME_WIDTH);
-                int height = (int) capGen.get(Videoio.CAP_PROP_FRAME_HEIGHT);
-
-                if (width % 2 != 0) width--;
-                if (height % 2 != 0) height--;
-                Size size = new Size(width, height);
-
-                String outputVideoPath = "videos/output_encrypted.avi";
-                int fourcc = VideoWriter.fourcc('M', 'J', 'P', 'G');
-                VideoWriter writerGen = new VideoWriter(outputVideoPath, fourcc, fps, size, true);
-
-                updateMessage("Export de l'audio crypté...");
-                String outputAudioPath = "videos/output_encrypted.wav";
-                AudioExporter.export(inputPath, outputAudioPath, rKey, sKey, true, fps);
-
-                if (!writerGen.isOpened()) {
-                    capGen.release();
-                    updateMessage("Erreur Writer Vidéo.");
-                    return null;
-                }
-
-                Mat frame = new Mat();
-                Mat resized = new Mat();
-                int framesProcessed = 0;
-
-                while (capGen.read(frame)) {
-                    if (isCancelled()) break;
-
-                    if (frame.width() != width || frame.height() != height) {
-                        Imgproc.resize(frame, resized, size);
-                        LineLogic.encrypt(resized, rKey, sKey);
-                        writerGen.write(resized);
-                    } else {
-                        LineLogic.encrypt(frame, rKey, sKey);
-                        writerGen.write(frame);
-                    }
-
-                    framesProcessed++;
-                    updateMessage("Génération : Frame " + framesProcessed);
-                }
-
-                frame.release();
-                resized.release();
-                capGen.release();
-                writerGen.release();
-
-                updateMessage("Succès ! Vidéo: output_encrypted.avi + Audio: output_encrypted.wav");
-                return null;
-            }
-        };
+        // Utilisation du VideoExporter
+        Task<Void> task = VideoExporter.createExportTask(inputPath, rKey, sKey);
 
         task.setOnSucceeded(e -> {
             statusLabel.setText(task.getMessage());
