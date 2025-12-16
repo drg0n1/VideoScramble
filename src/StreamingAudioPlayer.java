@@ -1,3 +1,11 @@
+/**
+ Nom :  Belhadj, Bernard
+ Prénom : Quentin, Elena
+ Groupe : S5-A
+ Projet : VideoScramble
+
+ Description : Cette classe gère la lecture audio en temps réel via un thread dédié. Elle permet d'appliquer les effets de transformation audio à la volée et gère désormais le bouclage (loop) automatique du son.
+ */
 import javax.sound.sampled.*;
 import java.io.File;
 import java.io.IOException;
@@ -8,6 +16,9 @@ public class StreamingAudioPlayer {
     private SourceDataLine line;
     private AudioInputStream audioInputStream;
     private Thread playbackThread;
+
+    // On garde une référence au fichier pour pouvoir le recharger en boucle
+    private File currentAudioFile;
 
     private volatile boolean isRunning = false;
     private volatile boolean isMuted = false;
@@ -20,7 +31,6 @@ public class StreamingAudioPlayer {
 
     // Synchro Vidéo (par défaut 30 fps)
     private double videoFps = 30.0;
-
 
     /**
      * Définit le nombre d'images par seconde pour synchroniser les buffers audio.
@@ -54,6 +64,9 @@ public class StreamingAudioPlayer {
                 return;
             }
 
+            // Sauvegarde du fichier pour le bouclage
+            this.currentAudioFile = audioFile;
+
             audioInputStream = AudioSystem.getAudioInputStream(audioFile);
             AudioFormat format = audioInputStream.getFormat();
             DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
@@ -64,12 +77,13 @@ public class StreamingAudioPlayer {
         } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
             System.err.println("Erreur Audio Player: " + e.getMessage());
             audioInputStream = null;
+            currentAudioFile = null;
         }
     }
 
     /**
      * Lance le thread de lecture audio.
-     * Lit les données par blocs correspondant à la durée d'une frame vidéo et applique les effets si nécessaire.
+     * Lit les données par blocs et boucle indéfiniment (replay) tant que isRunning est vrai.
      */
     public void play() {
         if (audioInputStream == null || line == null) return;
@@ -78,36 +92,50 @@ public class StreamingAudioPlayer {
         line.start();
 
         playbackThread = new Thread(() -> {
-            AudioFormat fmt = audioInputStream.getFormat();
-
-            // On veut que 1 bloc audio = temps d'1 frame vidéo
-            int frameSize = fmt.getFrameSize(); // Octets par sample (ex: 4 pour stéréo 16bit)
-            float sampleRate = fmt.getSampleRate();
-
-            // Taille buffer = (BytesPerSec / FPS)
-            int bufferSize = (int) ((sampleRate * frameSize) / videoFps);
-
-            // Alignement sur la taille d'un sample complet (pour ne pas couper un sample en deux)
-            if (bufferSize % frameSize != 0) {
-                bufferSize -= (bufferSize % frameSize);
-            }
-            if (bufferSize < frameSize) bufferSize = frameSize; // Sécurité minimum
-
-            byte[] buffer = new byte[bufferSize];
-            int bytesRead;
-
             try {
-                while (isRunning && (bytesRead = audioInputStream.read(buffer, 0, buffer.length)) != -1) {
+                AudioFormat fmt = audioInputStream.getFormat();
 
-                    // Gestion fin de fichier (dernier bloc incomplet)
+                // On veut que 1 bloc audio = temps d'1 frame vidéo
+                int frameSize = fmt.getFrameSize();
+                float sampleRate = fmt.getSampleRate();
+
+                // Taille buffer = (BytesPerSec / FPS)
+                int bufferSize = (int) ((sampleRate * frameSize) / videoFps);
+
+                // Alignement sur la taille d'un sample complet
+                if (bufferSize % frameSize != 0) {
+                    bufferSize -= (bufferSize % frameSize);
+                }
+                if (bufferSize < frameSize) bufferSize = frameSize;
+
+                byte[] buffer = new byte[bufferSize];
+                int bytesRead;
+
+                while (isRunning) {
+                    // Lecture du flux
+                    bytesRead = audioInputStream.read(buffer, 0, buffer.length);
+
+                    // --- GESTION DU BOUCLAGE (LOOP) ---
+                    if (bytesRead == -1) {
+                        // Fin du fichier atteinte : on recharge le flux depuis le début
+                        audioInputStream.close();
+                        if (currentAudioFile != null && currentAudioFile.exists()) {
+                            audioInputStream = AudioSystem.getAudioInputStream(currentAudioFile);
+                            continue; // On repart au début de la boucle while immédiatement
+                        } else {
+                            break; // Fichier introuvable, on arrête
+                        }
+                    }
+
+                    // Gestion fin de fichier (dernier bloc incomplet avant le loop)
                     byte[] chunkToProcess;
                     if (bytesRead < bufferSize) {
                         chunkToProcess = Arrays.copyOf(buffer, bytesRead);
                     } else {
-                        chunkToProcess = buffer; // Pas de copie, on travaille direct
+                        chunkToProcess = buffer;
                     }
 
-                    // Copie de travail pour ne pas abîmer le buffer de lecture si besoin
+                    // Copie de travail pour ne pas abîmer le buffer de lecture
                     byte[] audioBlock = Arrays.copyOf(chunkToProcess, chunkToProcess.length);
 
                     if (!isMuted) {
@@ -118,27 +146,36 @@ public class StreamingAudioPlayer {
                         }
 
                         // Envoi à la carte son
-                        line.write(audioBlock, 0, audioBlock.length);
+                        if (line.isOpen()) {
+                            line.write(audioBlock, 0, audioBlock.length);
+                        }
                     }
                 }
-            } catch (IOException e) {
+            } catch (IOException | UnsupportedAudioFileException e) {
                 e.printStackTrace();
             }
         });
         playbackThread.setDaemon(true);
         playbackThread.start();
     }
+
     /**
      * Arrête la lecture audio, ferme la ligne de données et termine le thread.
      */
     public void stop() {
         isRunning = false;
+        // On ferme proprement la ligne
         if (line != null) {
             line.stop();
             line.close();
         }
-        if (playbackThread != null) {
+        // On attend la fin du thread
+        if (playbackThread != null && playbackThread.isAlive()) {
             try { playbackThread.join(100); } catch (InterruptedException e) {}
+        }
+        // Fermeture du flux fichier
+        if (audioInputStream != null) {
+            try { audioInputStream.close(); } catch (IOException e) {}
         }
     }
 

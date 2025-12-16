@@ -32,7 +32,7 @@ public class AudioExporter {
                 String wavPath = inputPath.substring(0, inputPath.lastIndexOf('.')) + ".wav";
                 inputFile = new File(wavPath);
             }
-
+            // Vérification de l'existence du fichier
             if (!inputFile.exists()) {
                 System.out.println("Export Audio annulé : Fichier WAV source introuvable.");
                 return;
@@ -46,7 +46,7 @@ public class AudioExporter {
             int frameSize = format.getFrameSize();
             int bytesPerVideoFrame = (int) ((format.getSampleRate() * frameSize) / fps);
 
-            // Alignement
+            // Alignement sur la taille de frame
             if (bytesPerVideoFrame % frameSize != 0) {
                 bytesPerVideoFrame -= (bytesPerVideoFrame % frameSize);
             }
