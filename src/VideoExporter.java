@@ -9,8 +9,11 @@ import org.opencv.videoio.Videoio;
 public class VideoExporter {
 
     /**
-     * Crée une tâche JavaFX pour l'exportation vidéo et audio chiffrée.
-     * Gère l'ouverture de la vidéo source, le traitement frame par frame, et l'export audio.
+     * Exporte une vidéo cryptée ou décryptée en fonction des clés R et S fournies.
+     * @param inputPath
+     * @param rKey
+     * @param sKey
+     * @return
      */
     public static Task<Void> createExportTask(String inputPath, int rKey, int sKey) {
         return new Task<>() {
